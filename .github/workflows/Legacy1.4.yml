@@ -23,12 +23,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1 # 浅克隆加速
-
+        run: |
+          echo "仓库检出路径为: $(pwd)"
+          ls -la $(pwd)
+          chmod -R u+r $(pwd)
       - name: 安装依赖
         run: |
           sudo apt-get update -y
           sudo apt-get install -y wget jq translate-shell unzip
-
       - name: 下载最新资产
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -39,16 +41,23 @@ jobs:
           response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
           TAG_NAME=$(echo "$response" | jq -r '.tag_name')
           ASSETS=($(echo "$response" | jq -r '.assets[].name'))
-
-          # 下载所有资产（取消RELEASE/DEBUG过滤，直接下载全部）
+          max_retries=3
           for asset in "${ASSETS[@]}"; do
-            DOWNLOAD_URL=$(echo "$response" | jq -r ".assets[] | select(.name == \"$asset\") | .browser_download_url")
-            wget -q --show-progress "$DOWNLOAD_URL" -O "$asset"
-            echo "已下载: $asset"
+            retry_count=0
+            download_success=false
+            while [ $retry_count -lt $max_retries ]; do
+              DOWNLOAD_URL=$(echo "$response" | jq -r ".assets[] | select(.name == \"$asset\") | .browser_download_url")
+              wget -q --show-progress "$DOWNLOAD_URL" -O "$asset" && download_success=true && break
+              retry_count=$((retry_count + 1))
+              echo "下载 $asset 失败，第 $retry_count 次重试..."
+            done
+            if! $download_success; then
+              echo "下载 $asset 失败，已达到最大重试次数"
+            else
+              echo "已下载: $asset"
+            fi
           done
-
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
-
       - name: 同步更新日志
         run: |
           set -euo pipefail
@@ -73,7 +82,6 @@ jobs:
           # 更新版本文件和README
           echo "$TAG_NAME" > version.txt
           echo -e "## 📅 更新日志\n### $TAG_NAME\n$TRANSLATED_NOTES" >> README.md
-
       - name: 提交所有文件
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
