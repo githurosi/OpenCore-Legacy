@@ -91,7 +91,7 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: |
-            🔄 同步 ${TAG_NAME} 版本
+            🔄 同步 ${{ steps.get-release.outputs.TAG_NAME }} 版本
             日志更新: ${{ steps.get-release.outputs.RELEASE_NOTES | truncate:50 }}
           files: |
             version.txt
