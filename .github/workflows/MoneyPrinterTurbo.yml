@@ -22,12 +22,6 @@ jobs:
       - name: 检出当前仓库
         uses: actions/checkout@v4
 
-      - name: 初始化README.md文件（如果不存在）
-        run: |
-          if [! -f README.md ]; then
-            echo "# 项目名称" > README.md
-          fi
-
       - name: 获取目标仓库README内容
         id: fetch-readme
         run: |
@@ -41,13 +35,12 @@ jobs:
           set -euo pipefail
           FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}
           LOCAL_VERSION=$(cat version.txt 2>/dev/null || echo "")
-          # 尝试更灵活地提取目标版本号
-          TARGET_TAG=$(grep -oP '(?<=v)\d+\.\d+\.\d+' temp_readme.md || echo "")
+          TARGET_TAG=$(grep -oP '(?<=MoneyPrinterTurbo )v\d+\.\d+\.\d+' temp_readme.md) # 提取目标版本号
 
-          # 更灵活的资产日志提取（假设包含"资产"相关关键词）
-          ASSET_LOG=$(awk '/##.*资产.*日志/,/##.*更新.*日志/{if (/##.*资产.*日志/) {p=1; next} if (/##.*更新.*日志/) {p=0} p}' temp_readme.md)
-          # 更灵活的更新日志提取（假设包含"更新"相关关键词）
-          UPDATE_LOG=$(awk '/##.*更新.*日志/,/^## /{if (/##.*更新.*日志/) {p=1; next} if (/^## / && NR>1) {p=0} p}' temp_readme.md)
+          # 提取资产日志（假设资产日志标题为"资产与更新日志"，需根据实际调整）
+          ASSET_LOG=$(awk '/## 📦 资产日志/,/## \[更新日志\]/{if (/## 📦 资产日志/) {p=1; next} if (/## \[更新日志\]/) {p=0} p}' temp_readme.md)
+          # 提取更新日志（假设更新日志标题为"## 📅 更新日志"）
+          UPDATE_LOG=$(awk '/## 📅 更新日志/,/^## /{if (/## 📅 更新日志/) {p=1; next} if (/^## / && NR>1) {p=0} p}' temp_readme.md)
 
           # 组合日志顺序：资产日志 -> 更新日志
           combined_log=$(echo -e "$ASSET_LOG\n$UPDATE_LOG")
@@ -55,13 +48,9 @@ jobs:
           # 仅在版本变更或强制更新时写入
           if [ "$LOCAL_VERSION" != "$TARGET_TAG" ] || [ "$FORCE_UPDATE" = "true" ]; then
             echo "$TARGET_TAG" > version.txt
-            # 检查README.md是否存在，存在则清空原有日志部分（以包含"资产日志"为起始标记）
-            if [ -f README.md ]; then
-              sed -i '/##.*资产.*日志/,+1d' README.md
-              echo -e "\n## 📦 资产日志\n$ASSET_LOG\n## 📅 更新日志\n$UPDATE_LOG" >> README.md
-            else
-              echo "❗ README.md 文件未找到，无法写入日志"
-            fi
+            # 清空现有README中的日志部分（以"## 📦 资产日志"为起始标记）
+            sed -i '/## 📦 资产日志/,+1d' README.md
+            echo -e "\n## 📦 资产日志\n$ASSET_LOG\n## 📅 更新日志\n$UPDATE_LOG" >> README.md
           else
             echo "✅ 日志已同步至最新版本（$TARGET_TAG）"
           fi
