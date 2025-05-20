@@ -24,6 +24,12 @@ jobs:
         with:
           fetch-depth: 1 # 浅克隆加速
           
+      - name: 清理工作目录（可选，用于排查是否有干扰文件）
+        run: |
+          rm -rf *
+          rm -rf .gitignore
+          rm -rf .gitkeep
+          git reset --hard HEAD
       - name: 配置 Git 用户信息
         run: |
           git config user.name "GitHub Actions Bot"
@@ -31,10 +37,13 @@ jobs:
 
       - name: 创建 README.md 文件
         run: |
+          current_dir=$(pwd)
+          echo "当前工作目录: $current_dir"
           if [! -f README.md ]; then
             echo "# OpenCore - 旧版项目简介" > README.md
             chmod 644 README.md
             git add README.md
+            git status
           fi
 
       - name: 列出仓库文件
