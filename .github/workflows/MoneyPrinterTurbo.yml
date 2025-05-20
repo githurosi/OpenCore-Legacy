@@ -1,76 +1,66 @@
-name: 同步README日志（带顺序调整）
+name: 仓库文件检测与同步
 on:
   push:
     branches: [ main ]
   schedule:
     - cron: "0 1 * * *" # UTC+8凌晨1点（如需UTC时区改为17点）
   workflow_dispatch:
-    inputs:
-      force_update:
-        description: '是否强制更新'
-        required: false
-        default: 'false'
 
 permissions:
   contents: write
 
 jobs:
-  sync-readme:
+  check_and_sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
-      - name: 检出当前仓库
+      - name: 检出仓库
         uses: actions/checkout@v4
 
-      - name: 初始化README.md文件（如果不存在）
+      - name: 检测并处理版本号文件
         run: |
-          if [! -f README.md ]; then
-            echo "# 项目名称" > README.md
-          fi
-
-      - name: 获取目标仓库README内容
-        id: fetch-readme
-        run: |
-          set -euo pipefail
-          TARGET_REPO="harry0703/MoneyPrinterTurbo"
-          README_URL="https://raw.githubusercontent.com/${TARGET_REPO}/main/README.md"
-          curl -s "$README_URL" > temp_readme.md
-
-      - name: 提取并重组日志内容
-        run: |
-          set -euo pipefail
-          FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}
-          LOCAL_VERSION=$(cat version.txt 2>/dev/null || echo "")
-          # 尝试更灵活地提取目标版本号
-          TARGET_TAG=$(grep -oP '(?<=v)\d+\.\d+\.\d+' temp_readme.md || echo "")
-
-          # 更灵活的资产日志提取（假设包含"资产"相关关键词）
-          ASSET_LOG=$(awk '/##.*资产.*日志/,/##.*更新.*日志/{if (/##.*资产.*日志/) {p=1; next} if (/##.*更新.*日志/) {p=0} p}' temp_readme.md)
-          # 更灵活的更新日志提取（假设包含"更新"相关关键词）
-          UPDATE_LOG=$(awk '/##.*更新.*日志/,/^## /{if (/##.*更新.*日志/) {p=1; next} if (/^## / && NR>1) {p=0} p}' temp_readme.md)
-
-          # 组合日志顺序：资产日志 -> 更新日志
-          combined_log=$(echo -e "$ASSET_LOG\n$UPDATE_LOG")
-
-          # 仅在版本变更或强制更新时写入
-          if [ "$LOCAL_VERSION" != "$TARGET_TAG" ] || [ "$FORCE_UPDATE" = "true" ]; then
-            echo "$TARGET_TAG" > version.txt
-            # 检查README.md是否存在，存在则清空原有日志部分（以包含"资产日志"为起始标记）
-            if [ -f README.md ]; then
-              sed -i '/##.*资产.*日志/,+1d' README.md
-              echo -e "\n## 📦 资产日志\n$ASSET_LOG\n## 📅 更新日志\n$UPDATE_LOG" >> README.md
-            else
-              echo "❗ README.md 文件未找到，无法写入日志"
-            fi
+          if [! -f version.txt ]; then
+            echo "版本号文件不存在，开始同步..."
+            # 这里假设从目标仓库获取版本号的逻辑，你需根据实际情况替换
+            TARGET_REPO="harry0703/MoneyPrinterTurbo"
+            README_URL="https://raw.githubusercontent.com/${TARGET_REPO}/main/README.md"
+            curl -s "$README_URL" > temp_readme.md
+            TAG_NAME=$(grep -oP '(?<=v)\d+\.\d+\.\d+' temp_readme.md || echo "")
+            echo "$TAG_NAME" > version.txt
+            echo "版本号文件同步完成"
           else
-            echo "✅ 日志已同步至最新版本（$TARGET_TAG）"
+            echo "版本号文件已存在，跳过同步"
           fi
 
-      - name: 提交变更
+      - name: 检测并处理日志文件夹
+        run: |
+          if [! -d logs ]; then
+            echo "日志文件夹不存在，开始创建并同步..."
+            mkdir logs
+            # 这里假设从目标仓库获取日志内容并放入logs文件夹的逻辑，你需根据实际情况替换
+            echo "日志文件夹创建并同步完成"
+          else
+            echo "日志文件夹已存在，跳过同步"
+          fi
+
+      - name: 检测并处理temp_readme.md文件
+        run: |
+          if [! -f temp_readme.md ]; then
+            echo "temp_readme.md文件不存在，开始同步..."
+            # 这里假设从目标仓库获取README内容并保存为temp_readme.md的逻辑，你需根据实际情况替换
+            TARGET_REPO="harry0703/MoneyPrinterTurbo"
+            README_URL="https://raw.githubusercontent.com/${TARGET_REPO}/main/README.md"
+            curl -s "$README_URL" > temp_readme.md
+            echo "temp_readme.md文件同步完成"
+          else
+            echo "temp_readme.md文件已存在，跳过同步"
+          fi
+
+      - name: 提交变更（如果有）
         if: always()
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: 🔄 同步README日志（资产优先显示）
+          commit_message: 检测并同步仓库缺失文件
           files: |
-            README.md
             version.txt
+            logs/*
+            temp_readme.md
