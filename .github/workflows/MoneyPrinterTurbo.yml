@@ -1,13 +1,13 @@
-name: 同步资产与更新日志（根目录版）
+name: 同步README日志（带顺序调整）
 on:
   push:
     branches: [ main ]
   schedule:
-    - cron: "0 1 * * *" # UTC+8 凌晨1点（GitHub默认UTC时区需调整为17点）
+    - cron: "0 1 * * *" # UTC+8凌晨1点（如需UTC时区改为17点）
   workflow_dispatch:
     inputs:
       force_update:
-        description: '是否强制更新（忽略版本检查）'
+        description: '是否强制更新'
         required: false
         default: 'false'
 
@@ -15,75 +15,51 @@ permissions:
   contents: write
 
 jobs:
-  sync:
+  sync-readme:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: 检出仓库
+      - name: 检出当前仓库
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1 # 浅克隆加速
 
-      - name: 安装依赖
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y wget jq unzip # 保留必要工具
-
-      - name: 下载最新资产
-        id: download-assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 获取目标仓库README内容
+        id: fetch-readme
         run: |
           set -euo pipefail
-          REPO_OWNER="harry0703" # 修改为目标仓库所有者
-          REPO_NAME="MoneyPrinterTurbo" # 修改为目标仓库名
-          response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
-          TAG_NAME=$(echo "$response" | jq -r '.tag_name')
-          ASSETS=($(echo "$response" | jq -r '.assets[].name')) # 获取资产列表
+          TARGET_REPO="harry0703/MoneyPrinterTurbo"
+          README_URL="https://raw.githubusercontent.com/${TARGET_REPO}/main/README.md"
+          curl -s "$README_URL" > temp_readme.md
 
-          # 创建资产目录并下载
-          mkdir -p assets
-          for asset in "${ASSETS[@]}"; do
-            DOWNLOAD_URL=$(echo "$response" | jq -r ".assets[] | select(.name == \"$asset\") | .browser_download_url")
-            wget -q --show-progress "$DOWNLOAD_URL" -O "assets/$asset"
-            echo "已下载资产: $asset"
-          done
-
-          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
-          echo "ASSETS=$(printf "%s\n" "${ASSETS[@]}")" >> $GITHUB_OUTPUT # 存储资产列表
-
-      - name: 同步更新日志
+      - name: 提取并重组日志内容
         run: |
           set -euo pipefail
           FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}
           LOCAL_VERSION=$(cat version.txt 2>/dev/null || echo "")
-          TAG_NAME=${{ steps.download-assets.outputs.TAG_NAME }}
-          REPO_OWNER="harry0703"
-          REPO_NAME="MoneyPrinterTurbo"
+          TARGET_TAG=$(grep -oP '(?<=MoneyPrinterTurbo )v\d+\.\d+\.\d+' temp_readme.md) # 提取目标版本号
 
-          response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
-          RELEASE_NOTES=$(echo "$response" | jq -r '.body')
+          # 提取资产日志（假设资产日志标题为"资产与更新日志"，需根据实际调整）
+          ASSET_LOG=$(awk '/## 📦 资产日志/,/## \[更新日志\]/{if (/## 📦 资产日志/) {p=1; next} if (/## \[更新日志\]/) {p=0} p}' temp_readme.md)
+          # 提取更新日志（假设更新日志标题为"## 📅 更新日志"）
+          UPDATE_LOG=$(awk '/## 📅 更新日志/,/^## /{if (/## 📅 更新日志/) {p=1; next} if (/^## / && NR>1) {p=0} p}' temp_readme.md)
 
-          # 版本检查
-          if [ "$LOCAL_VERSION" = "$TAG_NAME" ] && [ "$FORCE_UPDATE" != "true" ]; then
-            echo "✅ 已是最新版本（$TAG_NAME），无需更新"
-            exit 0
+          # 组合日志顺序：资产日志 -> 更新日志
+          combined_log=$(echo -e "$ASSET_LOG\n$UPDATE_LOG")
+
+          # 仅在版本变更或强制更新时写入
+          if [ "$LOCAL_VERSION" != "$TARGET_TAG" ] || [ "$FORCE_UPDATE" = "true" ]; then
+            echo "$TARGET_TAG" > version.txt
+            # 清空现有README中的日志部分（以"## 📦 资产日志"为起始标记）
+            sed -i '/## 📦 资产日志/,+1d' README.md
+            echo -e "\n## 📦 资产日志\n$ASSET_LOG\n## 📅 更新日志\n$UPDATE_LOG" >> README.md
+          else
+            echo "✅ 日志已同步至最新版本（$TARGET_TAG）"
           fi
 
-          # 更新版本文件
-          echo "$TAG_NAME" > version.txt
-
-          # 追加日志到README.md（仓库使用中文README）
-          echo -e "\n## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
-
-      - name: 提交所有文件
+      - name: 提交变更
         if: always()
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: |
-            🔄 同步 ${TAG_NAME} 资产与日志
-            资产: ${{ join(steps.download-assets.outputs.ASSETS, ', ') }}
+          commit_message: 🔄 同步README日志（资产优先显示）
           files: |
-            assets/*      # 资产目录
-            version.txt   # 版本文件
-            README.md     # 更新日志
+            README.md
+            version.txt
