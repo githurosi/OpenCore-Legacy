@@ -35,8 +35,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          REPO_OWNER="dortania"          # 替换为新仓库所有者
-          REPO_NAME="OpenCore-Legacy-Patcher" # 替换为新仓库名称
+          REPO_OWNER="dortania"
+          REPO_NAME="OpenCore-Legacy-Patcher"
           response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
           TAG_NAME=$(echo "$response" | jq -r '.tag_name')
           ASSETS=($(echo "$response" | jq -r '.assets[].name'))
@@ -56,8 +56,8 @@ jobs:
           set -euo pipefail
           FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}
           LOCAL_VERSION=$(cat version.txt 2>/dev/null || echo "")
-          REPO_OWNER="dortania"          # 替换为新仓库所有者
-          REPO_NAME="OpenCore-Legacy-Patcher" # 替换为新仓库名称
+          REPO_OWNER="dortania"
+          REPO_NAME="OpenCore-Legacy-Patcher"
 
           response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
           TAG_NAME=$(echo "$response" | jq -r '.tag_name')
@@ -83,7 +83,7 @@ jobs:
           commit_message: |
             🔄 同步 ${TAG_NAME} 资产与日志
             资产: ${{ join(steps.download-assets.outputs.ASSETS, ', ') }}
-          files: |
-            *.zip         # 所有资产压缩包
-            version.txt   # 版本文件
-            README.md     # 主页日志
+          file_pattern: |
+            *.zip
+            version.txt
+            README.md
