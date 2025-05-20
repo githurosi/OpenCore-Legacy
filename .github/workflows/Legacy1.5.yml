@@ -1,0 +1,50 @@
+name: 更新日志与版本记录
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: "0 1 * * *" # 每天凌晨1点运行（UTC+8）
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: 获取最新版本信息
+        run: |
+          set -euo pipefail
+          REPO_OWNER="dortania"
+          REPO_NAME="OpenCore-Legacy-Patcher"
+          response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
+          TAG_NAME=$(echo "$response" | jq -r '.tag_name')
+          RELEASE_NOTES=$(echo "$response" | jq -r '.body')
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "RELEASE_NOTES=$RELEASE_NOTES" >> $GITHUB_OUTPUT
+
+      - name: 更新日志与版本记录
+        run: |
+          LOCAL_VERSION=$(cat version.txt 2>/dev/null || echo "")
+          TAG_NAME=${{ steps.get - release.outputs.TAG_NAME }}
+          RELEASE_NOTES=${{ steps.get - release.outputs.RELEASE_NOTES }}
+          if [ "$LOCAL_VERSION" != "$TAG_NAME" ]; then
+            echo "$TAG_NAME" > version.txt
+            echo -e "## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
+          else
+            echo "当前已是最新版本，无需更新日志"
+          fi
+
+      - name: 提交更改
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 🔄 同步 ${TAG_NAME} 版本日志
+          file_pattern: |
+            version.txt
+            README.md
