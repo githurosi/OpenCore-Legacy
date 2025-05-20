@@ -24,6 +24,12 @@ jobs:
         with:
           fetch-depth: 1 # 浅克隆加速
           
+      - name: 创建 README.md 文件
+        run: |
+          if [! -f README.md ]; then
+            echo "# OpenCore - 旧版项目简介" > README.md
+          fi
+
       - name: 列出仓库文件
         run: |
           ls -la
