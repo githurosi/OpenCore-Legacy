@@ -1,9 +1,9 @@
-name: 同步仓库资产与日志
+name: 同步 MoneyPrinterTurbo 资产与日志
 on:
   push:
     branches: [ main ]
   schedule:
-    - cron: "0 1 * * *" # UTC+8 凌晨1点（需确认GitHub时区为UTC时调整为17点）
+    - cron: "0 1 * * *" # UTC+8 凌晨1点（GitHub时区为UTC时需调整为17点）
   workflow_dispatch:
     inputs:
       force_update:
@@ -22,12 +22,12 @@ jobs:
       - name: 检出仓库
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # 完整克隆以获取所有历史记录和文件
+          fetch-depth: 0 # 完整克隆以获取所有文件
 
       - name: 安装依赖
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y wget jq unzip # 按需添加其他工具
+          sudo apt-get install -y wget jq unzip # 资产下载依赖
 
       - name: 获取最新版本信息
         id: get-release
@@ -35,18 +35,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          REPO_OWNER="dortania"
-          REPO_NAME="OpenCore-Legacy-Patcher"
+          REPO_OWNER="harry0703"
+          REPO_NAME="MoneyPrinterTurbo"
           response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
           TAG_NAME=$(echo "$response" | jq -r '.tag_name')
           RELEASE_NOTES=$(echo "$response" | jq -r '.body')
-          ASSETS=($(echo "$response" | jq -r '.assets[].name')) # 获取资产列表
+          ASSETS=($(echo "$response" | jq -r '.assets[].name')) # 提取资产列表
 
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "RELEASE_NOTES=$RELEASE_NOTES" >> $GITHUB_OUTPUT
           echo "ASSETS=$(printf "%s\n" "${ASSETS[@]}")" >> $GITHUB_OUTPUT # 存储资产列表
 
-      - name: 同步更新日志（基于CHANGELOG.md或README.md）
+      - name: 同步更新日志（基于README.md）
         run: |
           set -euo pipefail
           FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}
@@ -63,21 +63,16 @@ jobs:
           # 更新版本文件
           echo "$TAG_NAME" > version.txt
 
-          # 同步日志到CHANGELOG.md（若仓库使用CHANGELOG）
-          if [ -f CHANGELOG.md ]; then
-            echo -e "\n## $TAG_NAME\n$RELEASE_NOTES" >> CHANGELOG.md
-          else
-            # 若使用README.md，取消注释以下行
-            # echo -e "\n## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
-          fi
+          # 追加日志到README.md（仓库使用README.md作为主页）
+          echo -e "\n## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
 
-      - name: 下载资产（可选）
+      - name: 下载最新资产
         if: steps.get-release.outputs.ASSETS != ""
         run: |
           set -euo pipefail
           ASSETS=(${!!{ steps.get-release.outputs.ASSETS }}) # 解析资产列表
-          REPO_OWNER="dortania"
-          REPO_NAME="OpenCore-Legacy-Patcher"
+          REPO_OWNER="harry0703"
+          REPO_NAME="MoneyPrinterTurbo"
 
           mkdir -p assets # 创建资产存储目录
           for asset in "${ASSETS[@]}"; do
@@ -91,9 +86,9 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: |
-            🔄 同步 ${{ steps.get-release.outputs.TAG_NAME }} 版本
-            日志更新: ${{ steps.get-release.outputs.RELEASE_NOTES | truncate:50 }}
+            🔄 同步 ${TAG_NAME} 版本资产与日志
+            资产: ${{ join(steps.get-release.outputs.ASSETS, ', ') }}
           files: |
             version.txt
-            CHANGELOG.md # 或README.md
-            assets/*       # 若启用资产下载
+            README.md
+            assets/*       # 下载的资产文件
