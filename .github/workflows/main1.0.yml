@@ -23,6 +23,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1 # 浅克隆加速
+          
+      - name: 列出仓库文件
+        run: |
+          ls -la
+          if [! -f README.md ]; then
+            echo "❗ README.md 文件未找到"
+          fi
 
       - name: 初始化版本文件
         run: |
@@ -69,10 +76,18 @@ jobs:
           echo "$TAG_NAME" > version.txt
 
           # 清空原有更新日志（以标题为标记）
-          sed -i '/^## 📅 更新日志/,+1d' README.md
+          if [ -f README.md ]; then
+            sed -i '/^## 📅 更新日志/,+1d' README.md
+          else
+            echo "❗ README.md 文件未找到，无法清空原有日志"
+          fi
 
           # 追加新日志（使用换行符转义）
-          echo -e "## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
+          if [ -f README.md ]; then
+            echo -e "## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
+          else
+            echo "❗ README.md 文件未找到，无法追加新日志"
+          fi
 
       - name: 提交更改
         if: always() # 确保无论成功失败都尝试提交（可选）
