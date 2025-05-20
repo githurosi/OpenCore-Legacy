@@ -1,0 +1,89 @@
+name: 同步资产与更新日志（根目录版）
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: "0 1 * * *" # UTC+8 凌晨1点（GitHub默认UTC时区需调整为17点）
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: '是否强制更新（忽略版本检查）'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1 # 浅克隆加速
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget jq unzip # 保留必要工具
+
+      - name: 下载最新资产
+        id: download-assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO_OWNER="harry0703" # 修改为目标仓库所有者
+          REPO_NAME="MoneyPrinterTurbo" # 修改为目标仓库名
+          response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
+          TAG_NAME=$(echo "$response" | jq -r '.tag_name')
+          ASSETS=($(echo "$response" | jq -r '.assets[].name')) # 获取资产列表
+
+          # 创建资产目录并下载
+          mkdir -p assets
+          for asset in "${ASSETS[@]}"; do
+            DOWNLOAD_URL=$(echo "$response" | jq -r ".assets[] | select(.name == \"$asset\") | .browser_download_url")
+            wget -q --show-progress "$DOWNLOAD_URL" -O "assets/$asset"
+            echo "已下载资产: $asset"
+          done
+
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "ASSETS=$(printf "%s\n" "${ASSETS[@]}")" >> $GITHUB_OUTPUT # 存储资产列表
+
+      - name: 同步更新日志
+        run: |
+          set -euo pipefail
+          FORCE_UPDATE=${{ github.event.inputs.force_update || 'false' }}
+          LOCAL_VERSION=$(cat version.txt 2>/dev/null || echo "")
+          TAG_NAME=${{ steps.download-assets.outputs.TAG_NAME }}
+          REPO_OWNER="harry0703"
+          REPO_NAME="MoneyPrinterTurbo"
+
+          response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
+          RELEASE_NOTES=$(echo "$response" | jq -r '.body')
+
+          # 版本检查
+          if [ "$LOCAL_VERSION" = "$TAG_NAME" ] && [ "$FORCE_UPDATE" != "true" ]; then
+            echo "✅ 已是最新版本（$TAG_NAME），无需更新"
+            exit 0
+          fi
+
+          # 更新版本文件
+          echo "$TAG_NAME" > version.txt
+
+          # 追加日志到README.md（仓库使用中文README）
+          echo -e "\n## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
+
+      - name: 提交所有文件
+        if: always()
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: |
+            🔄 同步 ${TAG_NAME} 资产与日志
+            资产: ${{ join(steps.download-assets.outputs.ASSETS, ', ') }}
+          files: |
+            assets/*      # 资产目录
+            version.txt   # 版本文件
+            README.md     # 更新日志
