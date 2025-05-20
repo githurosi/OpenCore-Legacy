@@ -27,7 +27,7 @@ jobs:
       - name: 安装依赖（仅保留解析工具）
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y jq wget # 移除翻译工具依赖
+          sudo apt-get install -y jq wget
 
       - name: 获取最新版本信息
         id: get-release
@@ -35,12 +35,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          REPO_OWNER="dortania"          # 新仓库所有者
-          REPO_NAME="OpenCore-Legacy-Patcher" # 新仓库名称
+          REPO_OWNER="dortania"
+          REPO_NAME="OpenCore-Legacy-Patcher"
           response=$(curl -s https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest)
           TAG_NAME=$(echo "$response" | jq -r '.tag_name')
-          RELEASE_NOTES=$(echo "$response" | jq -r '.body') # 直接使用英文日志
-
+          RELEASE_NOTES=$(echo "$response" | jq -r '.body')
+          # 对日志内容进行全面转义处理
+          RELEASE_NOTES=$(echo "$RELEASE_NOTES" | sed 's/[&/\]/\\&\\/\\]/g; s/"/\\"/g; s/\'/\\\'/g; s/\n/\\n/g')
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_OUTPUT
           echo "RELEASE_NOTES=$RELEASE_NOTES" >> $GITHUB_OUTPUT
 
@@ -51,18 +52,11 @@ jobs:
           LOCAL_VERSION=$(cat version.txt 2>/dev/null || echo "")
           TAG_NAME=${{ steps.get-release.outputs.TAG_NAME }}
           RELEASE_NOTES=${{ steps.get-release.outputs.RELEASE_NOTES }}
-
-          # 版本对比：若一致且未强制更新则跳过
           if [ "$LOCAL_VERSION" = "$TAG_NAME" ] && [ "$FORCE_UPDATE" != "true" ]; then
             echo "✅ 已是最新版本（$TAG_NAME），无需更新"
             exit 0
           fi
-
-          # 更新版本文件
           echo "$TAG_NAME" > version.txt
-
-          # 写入日志（可取消注释启用翻译）
-          # TRANSLATED_NOTES=$(echo "$RELEASE_NOTES" | trans -b -e google -t zh-CN || echo "$RELEASE_NOTES")
           echo -e "## 📅 更新日志\n### $TAG_NAME\n$RELEASE_NOTES" >> README.md
 
       - name: 提交更改
@@ -71,5 +65,5 @@ jobs:
         with:
           commit_message: 🔄 同步 ${TAG_NAME} 版本日志
           file_pattern: |
-            version.txt   # 版本文件
-            README.md     # 主页日志
+            version.txt
+            README.md
